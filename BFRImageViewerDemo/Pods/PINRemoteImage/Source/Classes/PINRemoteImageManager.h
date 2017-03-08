@@ -14,10 +14,12 @@
 #import <Cocoa/Cocoa.h>
 #endif
 
-@protocol PINRemoteImageManagerAlternateRepresentationProvider;
-@protocol PINRemoteImageCaching;
+#import "PINRemoteImageMacros.h"
 
 #import "PINRemoteImageManagerResult.h"
+
+@protocol PINRemoteImageManagerAlternateRepresentationProvider;
+@protocol PINRemoteImageCaching;
 
 @class PINRemoteImageManagerResult;
 
@@ -130,7 +132,6 @@ typedef void(^PINRemoteImageManagerProgressDownload)(int64_t completedBytes, int
 /** An image downloading, processing and caching manager. It uses the concept of download and processing tasks to ensure that even if multiple calls to download or process an image are made, it only occurs one time (unless an item is no longer in the cache). PINRemoteImageManager is backed by GCD and safe to access from multiple threads simultaneously. It ensures that images are decoded off the main thread so that animation performance isn't affected. None of its exposed methods allow for synchronous access. However, it is optimized to call completions on the calling thread if an item is in its memory cache. **/
 @interface PINRemoteImageManager : NSObject
 
-
 @property (nonatomic, readonly, nonnull) id<PINRemoteImageCaching> cache;
 
 /**
@@ -143,21 +144,21 @@ typedef void(^PINRemoteImageManagerProgressDownload)(int64_t completedBytes, int
 /**
  Create and return a PINRemoteImageManager with the specified configuration and alternative representation delegate. If configuration is nil, [NSURLSessionConfiguration defaultConfiguration] is used. Specify a custom configuration if you need to configure timeout values, cookie policies, additional HTTP headers, etc. If alternativeRepresentationProvider is nil, the default is used (and supports FLAnimatedImage).
  @param configuration The configuration used to create the PINRemoteImageManager.
- @param alternativeRepDelegate a delegate which conforms to the PINRemoteImageManagerAlternateRepresentationProvider protocol. Provide a delegate if you want to have non image results. @see PINRemoteImageManagerAlternateRepresentationProvider for an example.
+ @param alternativeRepresentationProvider a delegate which conforms to the PINRemoteImageManagerAlternateRepresentationProvider protocol. Provide a delegate if you want to have non image results. @see PINRemoteImageManagerAlternateRepresentationProvider for an example.
  @return A PINRemoteImageManager with the specified configuration.
  */
 - (nonnull instancetype)initWithSessionConfiguration:(nullable NSURLSessionConfiguration *)configuration
-                   alternativeRepresentationProvider:(nullable id <PINRemoteImageManagerAlternateRepresentationProvider>)alternateRepDelegate;
+                   alternativeRepresentationProvider:(nullable id <PINRemoteImageManagerAlternateRepresentationProvider>)alternativeRepresentationProvider;
 
 /**
  Create and return a PINRemoteImageManager with the specified configuration and alternative representation delegate. If configuration is nil, [NSURLSessionConfiguration defaultConfiguration] is used. Specify a custom configuration if you need to configure timeout values, cookie policies, additional HTTP headers, etc. If alternativeRepresentationProvider is nil, the default is used (and supports FLAnimatedImage).
  @param configuration The configuration used to create the PINRemoteImageManager.
- @param alternativeRepDelegate a delegate which conforms to the PINRemoteImageManagerAlternateRepresentationProvider protocol. Provide a delegate if you want to have non image results. @see PINRemoteImageManagerAlternateRepresentationProvider for an example.
+ @param alternativeRepresentationProvider a delegate which conforms to the PINRemoteImageManagerAlternateRepresentationProvider protocol. Provide a delegate if you want to have non image results. @see PINRemoteImageManagerAlternateRepresentationProvider for an example.
  @param imageCache  Optional delegate which conforms to the PINRemoteImageCaching protocol. Provide a delegate if you want to control image caching. By default, image manager will use most appropriate implementation available (based on PINCache or NSCache, depending on subspec)@see PINRemoteImageBasicCache for an example.
  @return A PINRemoteImageManager with the specified configuration.
  */
 - (nonnull instancetype)initWithSessionConfiguration:(nullable NSURLSessionConfiguration *)configuration
-                   alternativeRepresentationProvider:(nullable id <PINRemoteImageManagerAlternateRepresentationProvider>)alternateRepDelegate
+                   alternativeRepresentationProvider:(nullable id <PINRemoteImageManagerAlternateRepresentationProvider>)alternativeRepresentationProvider
                                           imageCache:(nullable id<PINRemoteImageCaching>)imageCache NS_DESIGNATED_INITIALIZER;
 
 
@@ -182,6 +183,14 @@ typedef void(^PINRemoteImageManagerProgressDownload)(int64_t completedBytes, int
  @return An instance of a object, implementing PINRemoteImageCaching protocol.
  */
 - (nonnull id<PINRemoteImageCaching>)defaultImageCache;
+
+/**
+ * Sets a custom header to be included in every request. Headers set from this method will override any header from NSURLSessionConfiguration.
+ *
+ * @param value A value for the header. Pass in nil to remove a previously set value.
+ * @param header A string field for header.
+ */
+- (void)setValue:(nullable NSString *)value forHTTPHeaderField:(nullable NSString *)header;
 
 /**
  Set the Authentication Challenge Block.
@@ -424,6 +433,22 @@ typedef void(^PINRemoteImageManagerProgressDownload)(int64_t completedBytes, int
                              progressImage:(nullable PINRemoteImageManagerImageCompletion)progressImage
                                 completion:(nullable PINRemoteImageManagerImageCompletion)completion;
 
+
+/**
+ Adds an image manually into the memory and disk cache.
+ 
+ @param data NSData with the raw image data.
+ @param url NSURL where the image resides.
+ @param processorKey NSString key to uniquely identify processor and process. Will be used for caching processed images.
+ @param additionalCost NSUInteger the additional cost (for cache eviction purposes) to generate the processed image
+ 
+ @return A BOOL indicating if the image was successfully added to the cache.
+ */
+- (BOOL) insertImageDataIntoCache:(nonnull NSData*)data
+                          withURL:(nonnull NSURL *)url
+                     processorKey:(nullable NSString *)processorKey
+                   additionalCost:(NSUInteger)additionalCost;
+
 /**
  Returns the cacheKey for a given URL and processorKey. Exposed to be overridden if necessary or to be used with imageFromCacheWithCacheKey
  @see imageFromCacheWithCacheKey:completion:
@@ -436,7 +461,7 @@ typedef void(^PINRemoteImageManagerProgressDownload)(int64_t completedBytes, int
 - (nonnull NSString *)cacheKeyForURL:(nonnull NSURL *)url processorKey:(nullable NSString *)processorKey;
 
 /**
- @see imageFromCacheWithCacheKey:options:completion: instead
+ @see imageFromCacheWithURL:processorKey:options:completion:
  @deprecated
  
  @param cacheKey NSString key to look up image in the cache.
@@ -445,25 +470,46 @@ typedef void(^PINRemoteImageManagerProgressDownload)(int64_t completedBytes, int
 - (void)imageFromCacheWithCacheKey:(nonnull NSString *)cacheKey completion:(nonnull PINRemoteImageManagerImageCompletion)completion __attribute__((deprecated));
 
 /**
- Directly get an image from the underlying cache.
- @see cacheKeyForURL:processorKey:
+ @see imageFromCacheWithURL:processorKey:options:completion:
+ @deprecated
  
  @param cacheKey NSString key to look up image in the cache.
  @param options options will be used to determine if the cached image should be decompressed or FLAnimatedImages should be returned.
  @param completion PINRemoteImageManagerImageCompletion block to call when image has been fetched from the cache.
  */
-- (void)imageFromCacheWithCacheKey:(nonnull NSString *)cacheKey options:(PINRemoteImageManagerDownloadOptions)options completion:(nonnull PINRemoteImageManagerImageCompletion)completion;
+- (void)imageFromCacheWithCacheKey:(nonnull NSString *)cacheKey options:(PINRemoteImageManagerDownloadOptions)options completion:(nonnull PINRemoteImageManagerImageCompletion)completion __attribute__((deprecated));
 
 /**
- Directly get an image from the underlying memory cache synchronously.
- @see cacheKeyForURL:processorKey:
+ Directly get an image from the underlying cache.
+ 
+ @param url NSURL to look up image in the cache.
+ @param processorKey NSString key to uniquely identify processor and process.
+ @param options options will be used to determine if the cached image should be decompressed or FLAnimatedImages should be returned.
+ @param completion PINRemoteImageManagerImageCompletion block to call when image has been fetched from the cache.
+ */
+- (void)imageFromCacheWithURL:(nonnull NSURL *)url processorKey:(nullable NSString *)processorKey options:(PINRemoteImageManagerDownloadOptions)options completion:(nonnull PINRemoteImageManagerImageCompletion)completion;
+
+/**
+ @deprecated
+ @see synchronousImageFromCacheWithURL:processorKey:options:
  
  @param cacheKey NSString key to look up image in the cache.
  @param options options will be used to determine if the cached image should be decompressed or FLAnimatedImages should be returned.
  
  @return A PINRemoteImageManagerResult
  */
-- (nonnull PINRemoteImageManagerResult *)synchronousImageFromCacheWithCacheKey:(nonnull NSString *)cacheKey options:(PINRemoteImageManagerDownloadOptions)options;
+- (nonnull PINRemoteImageManagerResult *)synchronousImageFromCacheWithCacheKey:(nonnull NSString *)cacheKey options:(PINRemoteImageManagerDownloadOptions)options __attribute__((deprecated));
+
+/**
+ Directly get an image from the underlying memory cache synchronously.
+ 
+ @param url NSURL to look up image in the cache.
+ @param processorKey NSString key to uniquely identify processor and process
+ @param options options will be used to determine if the cached image should be decompressed or FLAnimatedImages should be returned.
+ 
+ @return A PINRemoteImageManagerResult
+ */
+- (nonnull PINRemoteImageManagerResult *)synchronousImageFromCacheWithURL:(nonnull NSURL *)url processorKey:(nullable NSString *)processorKey options:(PINRemoteImageManagerDownloadOptions)options;
 
 /**
  Cancel a download. Canceling will only cancel the download if all other downloads are also canceled with their associated UUIDs. Canceling *does not* guarantee that your completion will not be called. You can use the UUID provided on the result object verify the completion you want called is being called.

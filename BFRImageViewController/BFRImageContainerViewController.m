@@ -19,7 +19,11 @@
 @property (strong, nonatomic) UIScrollView *scrollView;
 
 /*! The actual view which will display the @c UIImage, this is housed inside of the scrollView property. */
-@property (strong, nonatomic) FLAnimatedImageView *imgView;
+#if USE_FLANIMATED_IMAGE
+    @property (strong, nonatomic) FLAnimatedImageView *imgView;
+#else
+    @property (strong, nonatomic) UIImageView *imgView;
+#endif
 
 /*! The image created from the passed in imgSrc property. */
 @property (strong, nonatomic) UIImage *imgLoaded;
@@ -63,9 +67,11 @@
         [self addImageToScrollView];
     } else if ([self.imgSrc isKindOfClass:[PHAsset class]]) {
         [self retrieveImageFromAsset];
+    #if USE_FLANIMATED_IMAGE
     } else if ([self.imgSrc isKindOfClass:[FLAnimatedImage class]]) {
         self.imgLoaded = ((FLAnimatedImage *)self.imgSrc).posterImage;
         [self retrieveImageFromFLAnimatedImage];
+    #endif
     } else if ([self.imgSrc isKindOfClass:[NSString class]]) {
         // Loading view
         NSURL *url = [NSURL URLWithString:self.imgSrc];
@@ -143,50 +149,91 @@
     return progressView;
 }
 
+#if USE_FLANIMATED_IMAGE
 - (FLAnimatedImageView *)createImageView {
     FLAnimatedImageView *resizableImageView;
-    
+
     if(self.animatedImgLoaded){
         resizableImageView = [[FLAnimatedImageView alloc] init];
         [resizableImageView setAnimatedImage:self.animatedImgLoaded];
     } else {
         resizableImageView = [[FLAnimatedImageView alloc] initWithImage:self.imgLoaded];
     }
-    
+
     resizableImageView.frame = self.view.bounds;
     resizableImageView.clipsToBounds = YES;
     resizableImageView.contentMode = UIViewContentModeScaleAspectFill;
     resizableImageView.backgroundColor = [UIColor colorWithWhite:0 alpha:1];
     resizableImageView.layer.cornerRadius = self.isBeingUsedFor3DTouch ? 14.0f : 0.0f;
-    
+
     // Toggle UI controls
     UITapGestureRecognizer *singleImgTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(dismissUI)];
     singleImgTap.numberOfTapsRequired = 1;
     [resizableImageView setUserInteractionEnabled:YES];
     [resizableImageView addGestureRecognizer:singleImgTap];
-    
+
     // Reset the image on double tap
     UITapGestureRecognizer *doubleImgTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(recenterImageOriginOrZoomToPoint:)];
     doubleImgTap.numberOfTapsRequired = 2;
     [resizableImageView addGestureRecognizer:doubleImgTap];
-    
+
     // Share options
     UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(showActivitySheet:)];
     [resizableImageView addGestureRecognizer:longPress];
-    
+
     // Ensure the single tap doesn't fire when a user attempts to double tap
     [singleImgTap requireGestureRecognizerToFail:doubleImgTap];
     [singleImgTap requireGestureRecognizerToFail:longPress];
-    
+
     // Dragging to dismiss
     UIPanGestureRecognizer *panImg = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleDrag:)];
     if (self.shouldDisableHorizontalDrag) {
         panImg.delegate = self;
     }
     [resizableImageView addGestureRecognizer:panImg];
-    
+
     return resizableImageView;
 }
+#else
+- (UIImageView *)createImageView {
+    UIImageView *resizableImageView;
+
+    resizableImageView = [[UIImageView alloc] initWithImage:self.imgLoaded];
+    resizableImageView.frame = self.view.bounds;
+    resizableImageView.clipsToBounds = YES;
+    resizableImageView.contentMode = UIViewContentModeScaleAspectFill;
+    resizableImageView.backgroundColor = [UIColor colorWithWhite:0 alpha:1];
+    resizableImageView.layer.cornerRadius = self.isBeingUsedFor3DTouch ? 14.0f : 0.0f;
+
+    // Toggle UI controls
+    UITapGestureRecognizer *singleImgTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(dismissUI)];
+    singleImgTap.numberOfTapsRequired = 1;
+    [resizableImageView setUserInteractionEnabled:YES];
+    [resizableImageView addGestureRecognizer:singleImgTap];
+
+    // Reset the image on double tap
+    UITapGestureRecognizer *doubleImgTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(recenterImageOriginOrZoomToPoint:)];
+    doubleImgTap.numberOfTapsRequired = 2;
+    [resizableImageView addGestureRecognizer:doubleImgTap];
+
+    // Share options
+    UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(showActivitySheet:)];
+    [resizableImageView addGestureRecognizer:longPress];
+
+    // Ensure the single tap doesn't fire when a user attempts to double tap
+    [singleImgTap requireGestureRecognizerToFail:doubleImgTap];
+    [singleImgTap requireGestureRecognizerToFail:longPress];
+
+    // Dragging to dismiss
+    UIPanGestureRecognizer *panImg = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleDrag:)];
+    if (self.shouldDisableHorizontalDrag) {
+        panImg.delegate = self;
+    }
+    [resizableImageView addGestureRecognizer:panImg];
+
+    return resizableImageView;
+}
+#endif
 
 - (void)addImageToScrollView {
     if (!self.imgView) {
@@ -354,6 +401,7 @@
     }];
 }
 
+#if USE_FLANIMATED_IMAGE
 - (void)retrieveImageFromFLAnimatedImage {
     if (![self.imgSrc isKindOfClass:[FLAnimatedImage class]]) {
         return;
@@ -365,6 +413,7 @@
     
     [self addImageToScrollView];
 }
+#endif
 
 - (void)retrieveImageFromURL {
     NSURL *url = (NSURL *)self.imgSrc;
@@ -382,13 +431,17 @@
                 [self showError];
                 return;
             }
-            
+
+            #if USE_FLANIMATED_IMAGE
             if(result.alternativeRepresentation){
                 self.imgSrc = result.alternativeRepresentation;
                 [self retrieveImageFromFLAnimatedImage];
             } else {
                 self.imgLoaded = result.image;
             }
+            #else
+                self.imgLoaded = result.image;
+            #endif
             
             [self addImageToScrollView];
             [self.progressView removeFromSuperview];
